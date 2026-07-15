@@ -87,6 +87,11 @@ def generate_answer(query, context_docs, conversation_history=None):
     )
 
     # ── Week 11 TODO ──────────────────────────────────────────────────────────
+    # ── Week 11: Add conversation history ──
+    if conversation_history is not None and len(conversation_history.messages) > 0:
+        history_text = conversation_history.get_formatted_history()
+        history_section = f"\nPrevious conversation:\n{history_text}\n"
+    else:
     # Add conversation history to the prompt.
     #
     # The RAG concept: LLMs have no memory between API calls. To support
@@ -100,7 +105,7 @@ def generate_answer(query, context_docs, conversation_history=None):
     #
     # Then include {history_section} in the prompt string below (already shown).
     # ─────────────────────────────────────────────────────────────────────────
-    history_section = ""  # Week 11: replace with conversation history logic
+        history_section = ""  # Week 11: replace with conversation history logic
 
     prompt = f"""You are a helpful assistant that answers questions based on the provided context documents.
 
@@ -211,6 +216,14 @@ def run_rag(query, conversation_history=None):
     grounding = {}    # Week 13: replace with check_hallucination(answer, documents)
 
     # ── Week 11 TODO ──────────────────────────────────────────────────────────
+    # ── Week 11: Save conversation ──
+    if conversation_history is not None:
+    # Save the user’s query
+        conversation_history.add_message("user", query)
+
+    # Save the assistant’s answer
+        conversation_history.add_message("assistant", answer)
+
     # Save this exchange to conversation history so follow-up questions work.
     #
     # The RAG concept: we store both sides of the exchange (user question AND

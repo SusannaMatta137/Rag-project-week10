@@ -27,7 +27,7 @@ from config import (
     SIMILARITY_THRESHOLD,
 )
 from embeddings import embed_text, embed_documents
-from vector_store import add_documents, query_similar
+from vector_store import add_documents, get_or_create_collection
 from data_loader import get_documents, generate_ids
 from conversation import ConversationHistory
 from security import validate_input, sanitize_input
@@ -37,6 +37,10 @@ from workflow import rewrite_query
 
 _client = genai.Client(api_key=GEMINI_API_KEY)
 
+import streamlit as st
+
+st.title("Week 13 — RAG Monitoring")
+st.write("Ask a question and see confidence + grounding labels below.")
 
 # ============================================================
 # WEEK 10: Core RAG — Already complete. Run the app and
@@ -69,10 +73,19 @@ def retrieve_context(query, n_results=TOP_K_RESULTS):
         Lower distance = more similar to the query.
     """
     query_embedding = embed_text(query)
-    results = query_similar(query_embedding, n_results)
+    collection = get_or_create_collection()
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=n_results,
+        include=["documents", "distances"],  # <-- critical
+    )
     documents = results["documents"][0]
     distances = results["distances"][0]
     return documents, distances
+
+
+   
+
 
 
 def generate_answer(query, context_docs, conversation_history=None):
@@ -133,6 +146,8 @@ Instructions:
 # The Week 10 core at the bottom already works.
 # ============================================================
 
+from security import validate_input, sanitize_input
+
 def run_rag(query, conversation_history=None):
     """
     Run the full RAG pipeline for a user query.
@@ -159,6 +174,23 @@ def run_rag(query, conversation_history=None):
     #        {"answer": error_message, "sources": [], "distances": [],
     #         "confidence": 0.0, "grounding": {}, "error": error_message}
     #   3. Clean up the query: query = sanitize_input(query)
+    # Week 12: Validate input first
+    is_valid, error_message = validate_input(query)
+    if not is_valid:
+        return {
+            "answer": error_message,
+            "sources": [],
+            "distances": [],
+            "confidence": 0.0,
+            "grounding": {},
+            "error": error_message,
+        }
+
+    # Clean up the query before any processing
+    query = sanitize_input(query)
+
+    # Continue with normal RAG flow...
+    # (retrieve documents, call LLM, etc.)
     # ─────────────────────────────────────────────────────────────────────────
 
     # ── Week 15 TODO ──────────────────────────────────────────────────────────
@@ -178,6 +210,7 @@ def run_rag(query, conversation_history=None):
 
     # ── Week 10: Core Retrieval — already complete ───────────────────────────
     documents, distances = retrieve_context(query)
+    print("Distances:", distances)
 
     # ── Week 14 TODO ──────────────────────────────────────────────────────────
     # Filter out documents that aren't similar enough to be useful.
@@ -200,6 +233,22 @@ def run_rag(query, conversation_history=None):
     answer = generate_answer(query, documents, conversation_history)
 
     # ── Week 13 TODO ──────────────────────────────────────────────────────────
+    # ── Week 13 Implementation ────────────────────────────────────────────────
+# Monitor the response quality after generation.
+    # ── Week 13 Implementation ────────────────────────────────────────────────
+    # Monitor the response quality after generation.
+
+    # 1. Confidence score from Chroma distances
+    confidence = calculate_confidence(distances)
+
+    # 2. Hallucination check using LLM-as-judge
+    grounding = check_hallucination(
+        question=query,
+        context_docs=documents,
+        answer=answer
+    )
+# ──────────────────────────────────────────────────────────────────────────
+
     # Monitor the response quality after generation.
     #
     # The RAG concept: even with context, LLMs can hallucinate. We use
@@ -212,8 +261,8 @@ def run_rag(query, conversation_history=None):
     #   2. grounding  = check_hallucination(answer, documents)
     #   Then replace the placeholder values below with these variables.
     # ─────────────────────────────────────────────────────────────────────────
-    confidence = 0.0  # Week 13: replace with calculate_confidence(distances)
-    grounding = {}    # Week 13: replace with check_hallucination(answer, documents)
+   # confidence = 0.0  # Week 13: replace with calculate_confidence(distances)
+   # grounding = {}    # Week 13: replace with check_hallucination(answer, documents)
 
     # ── Week 11 TODO ──────────────────────────────────────────────────────────
     # ── Week 11: Save conversation ──

@@ -25,6 +25,12 @@ import re
 # identity, asking the model to forget its context, etc.
 #
 BLOCKED_PATTERNS = [
+    "ignore previous instructions",
+    "you are now",
+    "act as",
+    "pretend to be",
+    "override instructions",
+    "system prompt"
     # Add your blocked phrases here (all lowercase)
     # Example: "ignore previous instructions",
 ]
@@ -33,6 +39,13 @@ BLOCKED_PATTERNS = [
 # Very long inputs are expensive to process and often a sign of abuse.
 MAX_QUERY_LENGTH = 500
 
+def validate_input(user_input):
+    """Check if the input contains any blocked phrase."""
+    lowered = user_input.lower()
+    for phrase in BLOCKED_PATTERNS:
+        if phrase in lowered:
+            return (False, f"Blocked input: contains '{phrase}'")
+    return (True, "")
 
 def validate_input(query):
     """
@@ -65,7 +78,22 @@ def validate_input(query):
     #
     # If all three checks pass, return: (True, "")
     #
-    return True, ""  # placeholder — replace with your implementation
+     # Check 1 — Empty input
+    if not query.strip():
+        return (False, "Please enter a question before submitting.")
+
+    # Check 2 — Input too long
+    if len(query) > MAX_QUERY_LENGTH:
+        return (False, f"Your query is too long. Please keep it under {MAX_QUERY_LENGTH} characters.")
+
+    # Check 3 — Prompt injection patterns
+    lowered = query.lower()
+    for phrase in BLOCKED_PATTERNS:
+        if phrase in lowered:
+            return (False, "Your query contains content that cannot be processed.")
+
+    # If all checks pass
+    return (True, "")
 
 
 def sanitize_input(query):

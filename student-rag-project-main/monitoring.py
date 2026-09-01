@@ -20,21 +20,79 @@ from config import GEMINI_API_KEY, GEMINI_MODEL
 _client = genai.Client(api_key=GEMINI_API_KEY)
 
 
-def check_hallucination(answer, context_docs):
+def check_hallucination(question, context_docs, answer, _client=_client):
     """
     Ask Gemini to evaluate whether the generated answer is grounded in
     the source documents that were retrieved.
-
-    Args:
-        answer:       The answer our app generated.
-        context_docs: The documents we retrieved and used as context.
-
-    Returns:
-        A dictionary with:
-          - "verdict":     "GROUNDED", "PARTIAL", or "HALLUCINATED"
-          - "is_grounded": True if verdict is GROUNDED, False otherwise
-          - "warning":     A warning string to show the user (empty if grounded)
     """
+    try:
+        # 1. Format documents into a single string
+        context = "\n\n".join([
+            f"Document {i+1}: {doc}"
+            for i, doc in enumerate(context_docs)
+        ])
+
+        # 2. Build the LLM-as-judge prompt
+        prompt = f"""
+You are an evaluator. Compare the answer to the provided source documents.
+
+Question:
+{question}
+
+Source Documents:
+{context}
+
+Answer:
+{answer}
+
+Classification rules:
+- GROUNDED: The answer is fully supported by the documents.
+- PARTIAL: The answer is somewhat supported, but includes extra information.
+- HALLUCINATED: The answer is not supported by the documents at all.
+
+Respond with EXACTLY ONE WORD:
+GROUNDED, PARTIAL, or HALLUCINATED.
+"""
+
+        # 3. Call Gemini with temperature=0.0
+        response = _client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt,
+            generation_config={"temperature": 0.0}
+        )
+
+        verdict = response.text.strip().upper()
+
+        # 4. Validate verdict
+        valid = {"GROUNDED", "PARTIAL", "HALLUCINATED"}
+        if verdict not in valid:
+            verdict = "PARTIAL"
+
+        # 5. Set warning message
+        if verdict == "GROUNDED":
+            warning = ""
+            is_grounded = True
+        elif verdict == "PARTIAL":
+            warning = "Note: This answer may include some information beyond the provided sources."
+            is_grounded = False
+        else:  # HALLUCINATED
+            warning = "Warning: This answer may contain information not found in the source documents."
+            is_grounded = False
+
+        # 6. Return result
+        return {
+            "verdict": verdict,
+            "is_grounded": is_grounded,
+            "warning": warning
+        }
+
+    except Exception:
+        return {
+            "verdict": "UNKNOWN",
+            "is_grounded": True,
+            "warning": ""
+        }
+
     # TODO (Week 13): Implement LLM-as-judge hallucination detection.
     #
     # --- The RAG concept ---
@@ -69,7 +127,7 @@ def check_hallucination(answer, context_docs):
     #   6. Return the dict. Wrap everything in try/except — if this call fails,
     #      return: {"verdict": "UNKNOWN", "is_grounded": True, "warning": ""}
     #
-    return {"verdict": "UNKNOWN", "is_grounded": True, "warning": ""}  # placeholder
+    #return {"verdict": "UNKNOWN", "is_grounded": True, "warning": ""}  # placeholder
 
 
 def calculate_confidence(distances):
@@ -83,6 +141,21 @@ def calculate_confidence(distances):
     Returns:
         A float between 0.0 (not confident) and 1.0 (very confident).
     """
+
+    # 1. If distances is empty, return 0.0
+    if not distances:
+        return 0.0
+
+    # 2. Compute the average distance
+    avg_distance = sum(distances) / len(distances)
+
+    # 3. Apply the formula: confidence = max(0.0, 1.0 - (avg_distance / 2.0))
+    confidence = max(0.0, 1.0 - (avg_distance / 2.0))
+    
+
+    # 4. Return rounded to 2 decimal places
+    return round(confidence, 2)
+
     # TODO (Week 13): Implement the confidence score calculation.
     #
     # --- The RAG concept ---
@@ -103,4 +176,4 @@ def calculate_confidence(distances):
     #   3. Apply the formula above
     #   4. Return the result rounded to 2 decimal places: round(confidence, 2)
     #
-    return 0.0  # placeholder — replace with your implementation
+    #return 0.0  # placeholder — replace with your implementation

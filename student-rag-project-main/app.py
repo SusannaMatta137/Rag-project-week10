@@ -116,17 +116,32 @@ for message in st.session_state.chat_messages:
             col1, col2 = st.columns(2)
             with col1:
                 confidence = message.get("confidence", 0)
+                confidence_percent = int(confidence * 100)
                 color = "green" if confidence > 0.6 else "orange" if confidence > 0.3 else "red"
-                st.markdown(f"**Confidence:** :{color}[{confidence:.0%}]")
+                st.markdown(f"**Confidence:** :{color}[{confidence_percent}%]")
             with col2:
-                grounding = message.get("grounding", {})
-                verdict = grounding.get("verdict", "")
+                grounding = message["grounding"]
+                verdict_raw = grounding.get("verdict", "")
+                verdict = verdict_raw.strip().upper()
+
+                if "GROUNDED" in verdict:
+                    verdict = "GROUNDED"
+                elif "PARTIAL" in verdict:
+                    verdict = "PARTIAL"
+                elif "HALLUCINATED" in verdict:
+                    verdict = "HALLUCINATED"
+                else:
+                    verdict = "UNKNOWN"
+
                 if verdict == "GROUNDED":
                     st.markdown("**Grounding:** :green[Grounded ✓]")
                 elif verdict == "PARTIAL":
                     st.markdown("**Grounding:** :orange[Partial ⚠]")
                 elif verdict == "HALLUCINATED":
                     st.markdown("**Grounding:** :red[May hallucinate ✗]")
+                else:
+                    st.markdown(f"**Grounding:** :grey_question[Unknown ({verdict_raw})]")
+
 
             # Show warning if grounding check raised a concern
             warning = grounding.get("warning", "")
@@ -150,6 +165,38 @@ if query:
         with st.spinner("Searching knowledge base and generating answer..."):
             result = run_rag(query, st.session_state.conversation_history)
 
+        col1, col2 = st.columns(2)
+        with col1:
+            confidence = result["confidence"]
+            confidence_percent = int(confidence * 100)
+            color = "green" if confidence > 0.6 else "orange" if confidence > 0.3 else "red"
+            st.markdown(f"**Confidence:** :{color}[{confidence_percent}%]")
+        with col2:
+            grounding = result["grounding"]
+            verdict_raw = grounding.get("verdict", "")
+            verdict = verdict_raw.strip().upper()
+
+            # Force verdict into one of the three categories
+            if "GROUNDED" in verdict:
+                verdict = "GROUNDED"
+            elif "PARTIAL" in verdict:
+                verdict = "PARTIAL"
+            elif "HALLUCINATED" in verdict:
+                verdict = "HALLUCINATED"
+            else:
+                # Default to PARTIAL if Gemini returns something unexpected
+                verdict = "PARTIAL"
+
+            # Display with colors
+            if verdict == "GROUNDED":
+                st.markdown("**Grounding:** :green[Grounded ✓]")
+            elif verdict == "PARTIAL":
+                st.markdown("**Grounding:** :orange[Partial ⚠]")
+            elif verdict == "HALLUCINATED":
+                st.markdown("**Grounding:** :red[May hallucinate ✗]")
+
+
+
         # Display error or answer
         if result["error"]:
             st.error(result["answer"])
@@ -167,26 +214,9 @@ if query:
                     st.markdown(f"> {source}")
                     st.divider()
 
-        # Display confidence and grounding for successful responses
-        if not result["error"] and result["sources"]:
-            col1, col2 = st.columns(2)
-            with col1:
-                confidence = result["confidence"]
-                color = "green" if confidence > 0.6 else "orange" if confidence > 0.3 else "red"
-                st.markdown(f"**Confidence:** :{color}[{confidence:.0%}]")
-            with col2:
-                grounding = result["grounding"]
-                verdict = grounding.get("verdict", "")
-                if verdict == "GROUNDED":
-                    st.markdown("**Grounding:** :green[Grounded ✓]")
-                elif verdict == "PARTIAL":
-                    st.markdown("**Grounding:** :orange[Partial ⚠]")
-                elif verdict == "HALLUCINATED":
-                    st.markdown("**Grounding:** :red[May hallucinate ✗]")
-
-            warning = grounding.get("warning", "")
-            if warning:
-                st.warning(warning)
+        warning = grounding.get("warning", "")
+        if warning:
+            st.warning(warning)
 
     # Store the assistant message for future re-renders
     st.session_state.chat_messages.append({

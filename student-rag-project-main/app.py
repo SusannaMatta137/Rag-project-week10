@@ -176,7 +176,6 @@ if query:
             verdict_raw = grounding.get("verdict", "")
             verdict = verdict_raw.strip().upper()
 
-            # Force verdict into one of the three categories
             if "GROUNDED" in verdict:
                 verdict = "GROUNDED"
             elif "PARTIAL" in verdict:
@@ -184,10 +183,8 @@ if query:
             elif "HALLUCINATED" in verdict:
                 verdict = "HALLUCINATED"
             else:
-                # Default to PARTIAL if Gemini returns something unexpected
                 verdict = "PARTIAL"
-
-            # Display with colors
+                
             if verdict == "GROUNDED":
                 st.markdown("**Grounding:** :green[Grounded ✓]")
             elif verdict == "PARTIAL":

@@ -110,6 +110,7 @@ Update this checklist as you complete each week's assignment.
 - [ ] Week 14 — Implemented filtering and fallbacks
 - [x] Week 15 — Implemented multi-step AI workflows
 - [x] Week 18 — Implemented metadata tagging and redaction
+- [x] Week 19 — Added unit tests and GitHub Actions CI
 
 ---
 
@@ -380,4 +381,38 @@ It is applied as a **safe default** at these boundaries:
 - Sample knowledge-base content is treated as public unless it contains PII patterns or internal/confidential markers.
 - Names without an email, phone, or ID are not detected (no NER).
 - This is not encryption, access control, or a formal audit program. It labels data and reduces accidental exposure in logs and model calls.
+
+---
+
+## Week 19 — Testing and CI
+
+Automated tests live in `tests/test_basic.py` at the repository root. They cover small, deterministic helpers that do not call Gemini or ChromaDB.
+
+### What is tested
+
+- **Redaction:** emails, phones, SSNs, and employee IDs are masked.
+- **Metadata tagging:** PII is labeled `confidential`; ordinary tech text stays `public` / `operational`.
+- **Safety boundaries:** `prepare_for_model()` and `safe_log()` must not leak raw personal data.
+- **Input helpers:** `sanitize_input()` and empty-query validation.
+- **Retrieval filter:** `filter_by_threshold()` drops high-distance documents.
+
+These tests matter because compliance and filtering can break silently during refactors. If redaction is removed, the safety tests fail before merge.
+
+### What is intentionally not tested
+
+- Live Gemini calls (rewriting, generation, hallucination checks)
+- ChromaDB / embedding model behavior
+- The Streamlit UI
+- End-to-end RAG answers (those depend on APIs, models, and network)
+
+### How to run
+
+From the repository root:
+
+```bash
+pip install -r requirements.txt
+pytest
+```
+
+GitHub Actions (`.github/workflows/tests.yml`) runs the same `pytest` command on every push and pull request.
 

@@ -107,7 +107,7 @@ Update this checklist as you complete each week's assignment.
 - [ ] Week 12 — Implemented input security
 - [ ] Week 13 — Implemented hallucination monitoring
 - [ ] Week 14 — Implemented filtering and fallbacks
-- [ ] Week 15 — Implemented multi-step AI workflows
+- [x] Week 15 — Implemented multi-step AI workflows
 
 ---
 

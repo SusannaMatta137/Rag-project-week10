@@ -207,6 +207,10 @@ def run_rag(query, conversation_history=None):
     #            history_context = conversation_history.get_formatted_history()
     #   2. Rewrite: query = rewrite_query(query, history_context)
     # ─────────────────────────────────────────────────────────────────────────
+    history_context = ""
+    if conversation_history and len(conversation_history) > 0:
+        history_context = conversation_history.get_formatted_history()
+    query = rewrite_query(query, history_context)
 
     # ── Week 10: Core Retrieval — already complete ───────────────────────────
     documents, distances = retrieve_context(query)
@@ -225,6 +229,7 @@ def run_rag(query, conversation_history=None):
         }
 
     # ── Week 10: Core Generation — already complete ──────────────────────────
+    # Week 14: wrap this in try/except and call handle_api_error(e) on failure
     try:
         answer = generate_answer(query, documents, conversation_history)
     except Exception as e:

@@ -34,6 +34,14 @@ from security import validate_input, sanitize_input
 from monitoring import check_hallucination, calculate_confidence
 from filters import filter_by_threshold, has_relevant_results, get_fallback_response, handle_api_error
 from workflow import rewrite_query
+from compliance import (
+    build_metadata,
+    is_sensitive,
+    prepare_for_model,
+    redact_text,
+    safe_log,
+    tag_documents,
+)
 
 _client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -55,7 +63,8 @@ def initialize_vector_store():
     documents = get_documents()
     ids = generate_ids(documents)
     embeddings = embed_documents(documents)
-    add_documents(documents, embeddings, ids)
+    metadatas = tag_documents(documents, source="document")
+    add_documents(documents, embeddings, ids, metadatas=metadatas)
     return len(documents)
 
 
@@ -77,11 +86,13 @@ def retrieve_context(query, n_results=TOP_K_RESULTS):
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=n_results,
-        include=["documents", "distances"],  # <-- critical
+        include=["documents", "distances", "metadatas"],
     )
     documents = results["documents"][0]
     distances = results["distances"][0]
-    return documents, distances
+    metadatas = results.get("metadatas") or [[]]
+    metadatas = metadatas[0] if metadatas else [{} for _ in documents]
+    return documents, distances, metadatas
 
 
    
@@ -96,14 +107,14 @@ def generate_answer(query, context_docs, conversation_history=None):
     grounded in our knowledge base rather than just its training data.
     """
     context = "\n\n".join(
-        [f"Document {i+1}: {doc}" for i, doc in enumerate(context_docs)]
+        [f"Document {i+1}: {prepare_for_model(doc, build_metadata(doc, 'document'))}" for i, doc in enumerate(context_docs)]
     )
 
     # ── Week 11 TODO ──────────────────────────────────────────────────────────
     # ── Week 11: Add conversation history ──
     if conversation_history is not None and len(conversation_history.messages) > 0:
         history_text = conversation_history.get_formatted_history()
-        history_section = f"\nPrevious conversation:\n{history_text}\n"
+        history_section = f"\nPrevious conversation:\n{redact_text(history_text)}\n"
     else:
     # Add conversation history to the prompt.
     #
@@ -124,7 +135,7 @@ def generate_answer(query, context_docs, conversation_history=None):
 
 Context Documents:
 {context}{history_section}
-Current Question: {query}
+Current Question: {prepare_for_model(query, build_metadata(query, "user_input"))}
 
 Instructions:
 - Answer based primarily on the provided context documents
@@ -184,10 +195,14 @@ def run_rag(query, conversation_history=None):
             "confidence": 0.0,
             "grounding": {},
             "error": error_message,
+            "compliance": {"query": {}, "answer": {}, "sources": []},
         }
 
     # Clean up the query before any processing
     query = sanitize_input(query)
+    query_metadata = build_metadata(query, "user_input")
+    safe_log("User query", query)
+    query = prepare_for_model(query, query_metadata)
 
     # Continue with normal RAG flow...
     # (retrieve documents, call LLM, etc.)
@@ -209,15 +224,17 @@ def run_rag(query, conversation_history=None):
     # ─────────────────────────────────────────────────────────────────────────
     history_context = ""
     if conversation_history and len(conversation_history) > 0:
-        history_context = conversation_history.get_formatted_history()
+        history_context = redact_text(conversation_history.get_formatted_history())
     query = rewrite_query(query, history_context)
 
     # ── Week 10: Core Retrieval — already complete ───────────────────────────
-    documents, distances = retrieve_context(query)
-    print("Distances:", distances)
+    documents, distances, metadatas = retrieve_context(query)
+    safe_log("Distances", distances)
 
     # ── Week 14: Filter by similarity threshold ─────────────────────────────
-    documents, distances = filter_by_threshold(documents, distances, SIMILARITY_THRESHOLD)
+    documents, distances, metadatas = filter_by_threshold(
+        documents, distances, SIMILARITY_THRESHOLD, metadatas=metadatas
+    )
     if not has_relevant_results(documents):
         return {
             "answer": get_fallback_response(),
@@ -226,6 +243,7 @@ def run_rag(query, conversation_history=None):
             "confidence": 0.0,
             "grounding": {"verdict": "N/A", "is_grounded": True, "warning": ""},
             "error": "",
+            "compliance": {"query": query_metadata, "answer": {}, "sources": []},
         }
 
     # ── Week 10: Core Generation — already complete ──────────────────────────
@@ -241,6 +259,7 @@ def run_rag(query, conversation_history=None):
             "confidence": 0.0,
             "grounding": {},
             "error": error_msg,
+            "compliance": {"query": query_metadata, "answer": {}, "sources": []},
         }
 
     # ── Week 13 TODO ──────────────────────────────────────────────────────────
@@ -255,8 +274,8 @@ def run_rag(query, conversation_history=None):
     # 2. Hallucination check using LLM-as-judge
     grounding = check_hallucination(
         question=query,
-        context_docs=documents,
-        answer=answer
+        context_docs=[prepare_for_model(doc, meta) for doc, meta in zip(documents, metadatas)],
+        answer=prepare_for_model(answer, build_metadata(answer, "model_output")),
     )
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -278,11 +297,8 @@ def run_rag(query, conversation_history=None):
     # ── Week 11 TODO ──────────────────────────────────────────────────────────
     # ── Week 11: Save conversation ──
     if conversation_history is not None:
-    # Save the user’s query
-        conversation_history.add_message("user", query)
-
-    # Save the assistant’s answer
-        conversation_history.add_message("assistant", answer)
+        conversation_history.add_message("user", redact_text(query))
+        conversation_history.add_message("assistant", redact_text(answer))
 
     # Save this exchange to conversation history so follow-up questions work.
     #
@@ -295,13 +311,23 @@ def run_rag(query, conversation_history=None):
     #   conversation_history.add_message("assistant", answer)
     # ─────────────────────────────────────────────────────────────────────────
 
+    answer_metadata = build_metadata(answer, "model_output")
+    safe_log("Model output", answer)
+    safe_sources = [redact_text(doc) for doc in documents]
+    safe_answer = redact_text(answer) if is_sensitive(answer_metadata) else answer
+
     return {
-        "answer": answer,
-        "sources": documents,
+        "answer": safe_answer,
+        "sources": safe_sources,
         "distances": distances,
         "confidence": confidence,
         "grounding": grounding,
         "error": "",
+        "compliance": {
+            "query": query_metadata,
+            "answer": answer_metadata,
+            "sources": metadatas,
+        },
     }
 
 

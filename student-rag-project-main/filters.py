@@ -19,7 +19,7 @@
 from config import SIMILARITY_THRESHOLD
 
 
-def filter_by_threshold(documents, distances, threshold=SIMILARITY_THRESHOLD):
+def filter_by_threshold(documents, distances, threshold=SIMILARITY_THRESHOLD, metadatas=None):
     """
     Keep only documents that are similar enough to the query.
 
@@ -28,9 +28,11 @@ def filter_by_threshold(documents, distances, threshold=SIMILARITY_THRESHOLD):
         distances:  List of L2 distance values (one per document).
         threshold:  Max allowed distance. Documents with distance above
                     this are considered too dissimilar to be useful.
+        metadatas:  Optional list of metadata dicts aligned with documents.
 
     Returns:
         (filtered_documents, filtered_distances) — only the passing pairs.
+        If metadatas is provided, also returns filtered_metadatas as a third value.
     """
     # TODO (Week 14): Implement similarity threshold filtering.
     #
@@ -49,10 +51,16 @@ def filter_by_threshold(documents, distances, threshold=SIMILARITY_THRESHOLD):
     #
     filtered_docs = []
     filtered_distances = []
-    for doc, distance in zip(documents, distances):
+    filtered_metadatas = []
+    metadata_list = metadatas if metadatas is not None else [None] * len(documents)
+    for doc, distance, meta in zip(documents, distances, metadata_list):
         if distance <= threshold:
             filtered_docs.append(doc)
             filtered_distances.append(distance)
+            if metadatas is not None:
+                filtered_metadatas.append(meta)
+    if metadatas is not None:
+        return filtered_docs, filtered_distances, filtered_metadatas
     return filtered_docs, filtered_distances
 
 
@@ -111,7 +119,8 @@ def handle_api_error(error):
             "Please check that your GEMINI_API_KEY in the .env file is correct."
         )
     else:
+        from compliance import redact_text
         return (
             "An unexpected error occurred while generating a response. "
-            f"Please try again. (Error: {str(error)[:100]})"
+            f"Please try again. (Error: {redact_text(str(error)[:100])})"
         )

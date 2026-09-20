@@ -101,6 +101,10 @@ SAMPLE_DOCUMENTS = [
     "Software testing is the practice of verifying that your code works correctly. Unit tests "
     "check individual functions in isolation. Integration tests check how components work "
     "together. Writing tests helps catch bugs early and makes code easier to change safely.",
+
+    # Hypothetical internal record used to demonstrate compliance tagging/redaction.
+    "INTERNAL NOTE: For onboarding questions contact Jane Doe at jane.doe@example.com "
+    "or call 555-201-0147. Employee ID EMP-4421. Do not share this contact list.",
 ]
 
 

@@ -95,6 +95,7 @@ The app opens in your browser at `http://localhost:8501`.
 | `monitoring.py` | Hallucination detection (Week 13) |
 | `filters.py` | Similarity filtering and fallbacks (Week 14) |
 | `workflow.py` | Query rewriting and multi-hop retrieval (Week 15) |
+| `compliance.py` | Metadata tagging and automated redaction (Week 18) |
 
 ---
 
@@ -108,6 +109,7 @@ Update this checklist as you complete each week's assignment.
 - [ ] Week 13 — Implemented hallucination monitoring
 - [ ] Week 14 — Implemented filtering and fallbacks
 - [x] Week 15 — Implemented multi-step AI workflows
+- [x] Week 18 — Implemented metadata tagging and redaction
 
 ---
 
@@ -326,6 +328,56 @@ Try a vague follow-up question:
 Before your implementation: "it" doesn't get resolved and retrieval is poor. After: the rewriter uses conversation context to turn it into a specific query.
 
 ### ✅ When done
-Check off **Week 15** in the Weekly Progress section above, then delete this entire Week 15 assignment section. You've built a full, production-patterned RAG system — nice work.
-
 ---
+
+## Week 18 — Compliance (Metadata Tagging and Redaction)
+
+This application is a learning RAG assistant over public tech documents. In a hypothetical production version, users could accidentally paste personal details into questions, and the knowledge base could include internal notes. The controls below are **compliance-aware patterns**, not a SOC 2 certification.
+
+### Applicable trust principles
+
+- **Security:** User input is validated before it reaches the LLM or vector store. API keys stay in `.env`. Redaction reduces how much sensitive text is written to logs if those logs are later exposed.
+- **Confidentiality:** Documents and queries are labeled by sensitivity. Confidential or restricted text is masked before logging, before conversation persistence, and before it is sent to Gemini, so it is not disclosed to extra systems by default.
+- **Privacy:** Emails, phone numbers, Social Security numbers, payment-card-like numbers, and employee IDs are treated as personal data. They are tagged as PII (or financial/PHI when those patterns match) and redacted at system boundaries.
+
+### Where sensitive data can appear
+
+| Location | What could be sensitive |
+| --- | --- |
+| User queries (`app.py` → `run_rag()`) | Names, emails, phone numbers, or other PII pasted into a question |
+| Conversation history (`conversation.py`) | Follow-up turns that repeat earlier personal details |
+| Knowledge base (`data_loader.py` / ChromaDB) | Mostly public tech notes; one hypothetical **INTERNAL NOTE** includes a contact email, phone, and employee ID |
+| Retrieved sources shown in the UI | Internal documents returned as context |
+| Model prompts and outputs | PII copied into Gemini or echoed in an answer |
+| Logs / debug prints | Previously printed raw queries, distances, and errors |
+
+### Metadata tags
+
+Each piece of text is labeled with three fields (see `compliance.py`):
+
+| Tag | Values | Meaning |
+| --- | --- | --- |
+| `sensitivity` | `public` / `internal` / `confidential` / `restricted` | How carefully the text should be handled |
+| `data_type` | `operational` / `PII` / `PHI` / `financial` | What kind of data was detected (comma-separated if several match) |
+| `source` | `user_input` / `document` / `model_output` | Where the text entered the system |
+
+Tags are attached when documents are ingested, when a query arrives, when sources are retrieved from ChromaDB, and when the model returns an answer. Classification is rule-based (regex and keywords), not a trained classifier.
+
+### Where redaction runs
+
+Redaction replaces emails, phones, SSNs, card-like numbers, employee IDs, and `api_key=` / `password=` style secrets with placeholders such as `[REDACTED_EMAIL]`.
+
+It is applied as a **safe default** at these boundaries:
+
+1. **Logs** — `safe_log()` prints only redacted text (user query, distances, model output).
+2. **LLM calls** — query rewriting, answer generation, and hallucination checks receive redacted text when the record is not public/operational.
+3. **Persistence** — conversation history stores redacted user and assistant messages.
+4. **Errors** — API error strings shown to the user are redacted.
+5. **UI sources** — retrieved document text is redacted before it is displayed.
+
+### Assumptions and limitations
+
+- Sample knowledge-base content is treated as public unless it contains PII patterns or internal/confidential markers.
+- Names without an email, phone, or ID are not detected (no NER).
+- This is not encryption, access control, or a formal audit program. It labels data and reduces accidental exposure in logs and model calls.
+

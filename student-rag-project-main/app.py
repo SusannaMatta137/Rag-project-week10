@@ -109,6 +109,14 @@ for message in st.session_state.chat_messages:
                     # Convert distance to a 0-1 similarity score for display
                     similarity = max(0, 1 - distance / 2)
                     st.markdown(f"**Source {i+1}** — similarity: `{similarity:.2f}`")
+                    source_tags = (message.get("compliance") or {}).get("sources") or []
+                    if i < len(source_tags) and source_tags[i]:
+                        meta = source_tags[i]
+                        st.caption(
+                            f"sensitivity: {meta.get('sensitivity', 'public')} · "
+                            f"data_type: {meta.get('data_type', 'operational')} · "
+                            f"source: {meta.get('source', 'document')}"
+                        )
                     st.markdown(f"> {source}")
                     st.divider()
 
@@ -208,6 +216,14 @@ if query:
                 ):
                     similarity = max(0, 1 - distance / 2)
                     st.markdown(f"**Source {i+1}** — similarity: `{similarity:.2f}`")
+                    source_tags = (result.get("compliance") or {}).get("sources") or []
+                    if i < len(source_tags) and source_tags[i]:
+                        meta = source_tags[i]
+                        st.caption(
+                            f"sensitivity: {meta.get('sensitivity', 'public')} · "
+                            f"data_type: {meta.get('data_type', 'operational')} · "
+                            f"source: {meta.get('source', 'document')}"
+                        )
                     st.markdown(f"> {source}")
                     st.divider()
 
@@ -223,6 +239,7 @@ if query:
         "distances": result["distances"],
         "confidence": result["confidence"],
         "grounding": result["grounding"],
+        "compliance": result.get("compliance", {}),
     })
 
     # Note: conversation_history is updated inside run_rag()
